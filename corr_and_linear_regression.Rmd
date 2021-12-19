@@ -1,0 +1,302 @@
+1. 환경 설정 및 라이브러리, 데이터셋 불러오기
+```{r}
+library(readr);library(ggplot2);library(dplyr); library(stringr);library(stats)
+setwd("c:/Users/ray67/.R")
+
+climate_city <- read.csv('./Climate/GlobalLandTemperaturesByCity.csv',encoding='UTF-8')
+climate_con <- read.csv('./Climate/GlobalLandTemperaturesByCountry.csv',encoding='UTF-8')
+climate_g <- read.csv('./Climate/GlobalTemperatures.csv',encoding='UTF-8')
+
+allen_r <- read.csv("./dataset/Allen_L.csv",encoding='UTF-8')[,-c(1)]
+climate_city_L <- read.csv("./dataset/climate_city_L.csv",encoding='UTF-8')[,-c(1)]
+climate_state_L <- read.csv("./dataset/climate_state_L.csv",encoding='UTF-8')[,-c(1)]
+climate_con_L <- read.csv("./dataset/climate_con_L.csv",encoding='UTF-8')[,-c(1)]
+```
+
+2. 유럽 기후 데이터 추출하기
+```{r}
+Euro_cli <- climate_con %>% filter(Country=='Europe')
+colnames(Euro_cli) = c("dt","Euro_a.tem","Euro_v.tem","Location")
+Euro_cli <- Euro_cli[,-c(4)]
+Euro_cli <- Euro_cli %>% filter(dt>=as.Date('1753-01-01') & dt<as.Date('2013-01-01'))
+
+Euro_cli %>% filter(is.na(Euro_a.tem)==TRUE) %>% count
+Euro_cli %>% filter(is.na(Euro_v.tem)==TRUE) %>% count
+
+Euro_cli$dt <- as.integer(substr(Euro_cli$dt,1,4))
+Euro_cli %>% str
+Euro_cli <- Euro_cli %>% group_by(dt) %>% 
+  summarise(Eu.avg=mean(Euro_a.tem),
+            Eu.vol=max(Euro_a.tem)-min(Euro_a.tem),
+            Eu.max=max(Euro_a.tem),
+            Eu.min=min(Euro_a.tem)
+  )
+Euro_cli <- as.data.frame(Euro_cli)
+
+ggplot(Euro_cli,aes(dt,Eu.vol))+geom_line()+geom_smooth()
+```
+
+3. 전체 지표 기후 확인
+```{r}
+climate_g %>% str
+climate_g$dt <- as.Date(climate_g$dt)
+ggplot(climate_g,aes(dt,LandAverageTemperature)) + geom_line()
+
+climate_g$dt <- as.integer(substr(climate_g$dt,1,4))
+climate_ga <- as.data.frame(climate_g %>% group_by(dt) %>% summarise(LAT=mean(LandAverageTemperature),
+                                         LTV=max(LandAverageTemperature)-min(LandAverageTemperature))
+               )
+ggplot(climate_ga,aes(dt,LAT))+geom_line()
+ggplot(climate_ga,aes(dt,LTV))+geom_line()+geom_smooth()
+LR <- lm(LAT ~ LTV, climate_ga)
+summary(LR)
+
+plot(LAT ~ LTV, climate_ga) + abline(LR)
+plot(Eng_v.tem ~ Eng_a.tem,data=Eng_wheat) + abline(lm)
+```
+
+
+3. ex. England 데이터 만들기 (merge allen & climate)
+```{r}
+England_cli <- climate_con %>% filter(Location=='England')
+Eng_comm <- allen %>% filter(Location=='England')
+
+ggplot(Eng_comm, aes(Item.Year,Standard.Value,group=Commodity,colour=Commodity)) + geom_line()
+
+```
+
+```{r}
+Eng_comm %>% group_by(Commodity,Item.Year) %>% summarise(Standard.Value=mean(Standard.Value))
+```
+
+```{r}
+Eng_cli <- climate_con %>% filter(Location=='United Kingdom (Europe)')
+colnames(Eng_cli) = c("dt","Eng_a.tem","Eng_v.tem","Location")
+Eng_cli[4] <- "England"
+Euro_cli <- climate_con %>% filter(Location=='Europe')
+colnames(Euro_cli) = c("dt","Euro_a.tem","Euro_v.tem","Location")
+Euro_cli <- Euro_cli[,-c(4)]
+
+Eng_Eu_cli <- merge(Eng_cli,Euro_cli,by="dt")[-c(3231:3239),]
+Eng_Eu_cli <- Eng_Eu_cli[-c(1:110),]
+
+Eng_Eu_cli %>% filter(is.na(Eng_a.tem)==TRUE) %>% count
+Eng_Eu_cli %>% filter(is.na(Eng_v.tem)==TRUE) %>% count
+Eng_Eu_cli %>% filter(is.na(Euro_a.tem)==TRUE) %>% count
+Eng_Eu_cli %>% filter(is.na(Euro_v.tem)==TRUE) %>% count
+
+Eng_Eu_cli$dt <- as.integer(substr(Eng_Eu_cli$dt,1,4))
+Eng_Eu_cli %>% str
+cli_Eng <- Eng_Eu_cli %>% group_by(dt) %>% 
+  summarise(Avg.Tem=mean(Eng_a.tem),
+            Vol.Tem=max(Eng_a.tem)-min(Eng_a.tem),
+            Max.Tem=max(Eng_a.tem),
+            Min.Tem=min(Eng_a.tem)
+            )
+colnames(Eng_comm)[1] <- "dt"
+cli_Eng <- as.data.frame(cli_Eng)
+England <- merge(Eng_comm,cli_Eng,by='dt')
+colnames(England)
+```
+
+
+4. England에서 어떤 품목이 기후와 관련이 있는지 확인
+1) 면
+```{r}
+Eng_cotton <- England %>% filter(Commodity=='Cotton')
+cor(cbind(Eng_cotton[3],Eng_cotton[11:12]))
+
+lm <- lm(Standard.Value ~ Avg.Tem+Vol.Tem, Eng_cotton)
+summary(lm)
+```
+
+2) 밀
+```{r}
+Eng_wheat <- England %>% filter(Commodity=='Wheat')
+cor(cbind(Eng_wheat[3],Eng_wheat[11:12]))
+Eng_wheat <- merge(Eng_wheat,Euro_cli,by='dt')
+cor(cbind(Eng_wheat[3],Eng_wheat[11:16]))
+```
+
+```{r}
+lm <- lm(Standard.Value ~ Avg.Tem+Vol.Tem, Eng_wheat)
+summary(lm)
+```
+
+```{r}
+lm <- lm(Standard.Value ~ Avg.Tem, Eng_wheat)
+summary(lm)
+```
+
+```{r}
+lm <- lm(Standard.Value ~ Vol.Tem, Eng_wheat)
+summary(lm)
+```
+
+```{r}
+lm <- lm(Vol.Tem ~ Avg.Tem, Eng_wheat)
+summary(lm)
+```
+```{r}
+plot(Vol.Tem ~ Avg.Tem,data=Eng_wheat) + abline(lm)
+```
+```{r}
+ggplot(Eng_wheat,aes(dt,Standard.Value)) + geom_line()
+
+ggplot(Eng_wheat,aes(Avg.Tem,Standard.Value)) + geom_point() + geom_smooth(method=stats::lm)
+ggplot(Eng_wheat,aes(Vol.Tem,Standard.Value)) + geom_point() + geom_smooth(method=stats::lm)
+summary(lm(Standard.Value ~ Avg.Tem, Eng_wheat))
+summary(lm(Standard.Value ~ Vol.Tem, Eng_wheat))
+
+ggplot(Eng_wheat,aes(Euro_a.tem,Standard.Value)) + geom_point() + geom_smooth(method=stats::lm)
+ggplot(Eng_wheat,aes(Euro_v.tem,Standard.Value)) + geom_point() + geom_smooth(method=stats::lm)
+summary(lm(Standard.Value ~ Euro_a.tem, Eng_wheat))
+summary(lm(Standard.Value ~ Euro_v.tem, Eng_wheat))
+```
+
+→ 유럽 전체 대상으로 한 기온 변화에 더 상관성을 가진다 (미묘하게)
+
+
+
+
+
+3) England Oatmeal
+```{r}
+England %>% str
+Eng_oatmeal <- England %>% filter(Commodity=='Oatmeal')
+
+cor(cbind(Eng_oatmeal[3],Eng_oatmeal[11:14]))
+
+summary(lm(Standard.Value ~ Vol.Tem+Avg.Tem+Min.Tem,Eng_oatmeal))
+summary(lm(Standard.Value ~ Vol.Tem+Avg.Tem,Eng_oatmeal))
+
+summary(lm(Standard.Value ~ Avg.Tem,Eng_oatmeal))
+summary(lm(Standard.Value ~ Vol.Tem,Eng_oatmeal))
+summary(lm(Standard.Value ~ Max.Tem,Eng_oatmeal))
+summary(lm(Standard.Value ~ Min.Tem,Eng_oatmeal))
+
+plot(Standard.Value ~ Avg.Tem,Eng_oatmeal) + abline(lm(Standard.Value ~ Avg.Tem,Eng_oatmeal))
+plot(Standard.Value ~ Vol.Tem,Eng_oatmeal) + abline(lm(Standard.Value ~ Vol.Tem,Eng_oatmeal))
+plot(Standard.Value ~ Max.Tem,Eng_oatmeal) + abline(lm(Standard.Value ~ Max.Tem,Eng_oatmeal))
+plot(Standard.Value ~ Min.Tem,Eng_oatmeal) + abline(lm(Standard.Value ~ Min.Tem,Eng_oatmeal))
+```
+-> 연평균기온보다 연교차가 오트밀 가격에 더 유의미한 상관관계를 보인다.
+-> 연교차와 오트밀 가격은 반비례 관계를 보인다. 예상과는 반대로 나온다
+
+4) England(London) Oats
+- oats와 oatmeal의 가격 연관성 비교
+```{r}
+London <- allen_r %>% filter(Location=='London')
+Lon_oats <- London %>% filter(Commodity=='Oats')
+### 비교를 위한 병합
+oats_meal <- merge(Lon_oats,Eng_oatmeal,by='dt')
+str(oats_meal)
+Lon_oats$dt %>% summary; Eng_oatmeal$dt %>% summary
+### conclusion : 연도가 겹치지 않아서 비교가 불가능하다.
+
+# wool? 
+England %>% select(Commodity) %>% unique
+
+Eng_wool <- England %>% filter(Commodity=='Wool')
+
+ggplot(Eng_wool,aes(dt,Standard.Value)) + geom_line()+geom_smooth()
+
+ggplot(Eng_wool,aes(dt,Avg.Tem)) + geom_line()+geom_smooth(method=stats::lm)
+ggplot(Eng_wool,aes(dt,Vol.Tem)) + geom_line() + geom_smooth(method=stats::lm)
+ggplot(Euro_cli,aes(Euro_a.tem,Euro_v.tem)) + geom_point() + geom_smooth(method=stats::lm)
+plot(Euro_v.tem ~ Euro_a.tem,Euro_cli) + abline(lm(Euro_v.tem ~ Euro_a.tem,Euro_cli))
+ggplot(Euro_cli,aes(dt,Euro_a.tem)) + geom_line()+geom_smooth(se=FALSE,method=stats::lm)+geom_smooth(colour='Red')
+ggplot(Euro_cli,aes(dt,Euro_v.tem)) + geom_line()+geom_smooth(se=FALSE,method=stats::lm)+geom_smooth(colour='Red')
+```
+
+5. Amsterdam
+```{r}
+Amsterdam <- allen_r %>% filter(Location=='Amsterdam')
+climate_city_L %>% filter(Location=='Amsterdam')
+climate_city_L %>% filter(Location=='Amsterdam') %>% filter(is.na(Avg.Tem)==TRUE) %>% count
+climate_city_L %>% filter(Location=='Amsterdam') %>% filter(is.na(Avg.Vol)==TRUE) %>% count
+climate_city_L %>% filter(Location=='Amsterdam') -> Ams_cli
+Ams_cli$dt <- as.integer(substr(Ams_cli$dt,1,4))
+colnames(Ams_cli)[3:4] <- c("avg",'vol')
+Ams_cli <- as.data.frame(Ams_cli %>% group_by(dt) %>% summarise(Avg.Tem=mean(avg),
+                                                                Vol.Tem=max(avg+vol)-min(avg-vol),
+                                                                Max.Tem=max(avg+vol),
+                                                                Min.Tem=min(avg-vol)))
+Ams_cli %>% str
+Amsterdam <- merge(Amsterdam,Ams_cli,by='dt')
+Amsterdam <- merge(Amsterdam,Euro_cli,by='dt')
+```
+
+1) 기온 변화 그래프
+```{r}
+ggplot(Amsterdam,aes(dt,Avg.Tem)) + geom_line() + geom_smooth()
+ggplot(Amsterdam,aes(dt,Vol.Tem)) + geom_line() + geom_smooth()
+```
+
+2) 염료만 추출 (폴란드 산, 쾨니히스베르크 산이 있음)
+```{r}
+Amsterdam %>% filter(Commodity=='Rye') %>% select(Variety)
+Ams_Rye <- Amsterdam%>% filter(Commodity=='Rye')
+Ams_Rye_Pol <- Ams_Rye %>% filter(Variety=='Polish')
+Ams_Rye_Kon <- Ams_Rye %>% filter(Variety=='Koenigsberg')
+
+cor(Ams_Rye[c(4,11:14)])
+cor(Ams_Rye_Pol[4],Ams_Rye_Kon[4])
+
+summary(lm(Standard.Value ~ Vol.Tem+Avg.Tem+Min.Tem,Ams_Rye))
+summary(lm(Standard.Value ~ Vol.Tem+Avg.Tem,Ams_Rye))
+
+summary(lm(Standard.Value ~ Avg.Tem,Ams_Rye))
+summary(lm(Standard.Value ~ Vol.Tem,Ams_Rye))
+summary(lm(Standard.Value ~ Max.Tem,Ams_Rye))
+summary(lm(Standard.Value ~ Min.Tem,Ams_Rye))
+
+plot(Standard.Value ~ Avg.Tem,Ams_Rye) + abline(lm(Standard.Value ~ Avg.Tem,Ams_Rye))
+plot(Standard.Value ~ Vol.Tem,Ams_Rye) + abline(lm(Standard.Value ~ Vol.Tem,Ams_Rye))
+plot(Standard.Value ~ Max.Tem,Ams_Rye) + abline(lm(Standard.Value ~ Max.Tem,Ams_Rye))
+plot(Standard.Value ~ Min.Tem,Ams_Rye) + abline(lm(Standard.Value ~ Min.Tem,Ams_Rye))
+
+ggplot(Ams_Rye,aes(Avg.Tem,Standard.Value)) + geom_point() +
+  geom_smooth(se=FALSE,method=stats::lm)
+```
+-> 예상대로 공산품의 경우에는 기온과 관계가 없어 보인다.
+```{r}
+Ams_Rye %>% names
+allen %>% filter(Location=='Poland') %>% select(Commodity) %>% unique
+
+Ams_Wheat <- Amsterdam %>% filter(Commodity=='Wheat')
+cor(Ams_Rye[c(4,11:12,15:16)])
+
+ggplot(Ams_Wheat,aes(dt,Standard.Value)) + geom_line()
+
+ggplot(Ams_Wheat,aes(Avg.Tem,Standard.Value)) + geom_point() + geom_smooth(method=stats::lm)
+ggplot(Ams_Wheat,aes(Vol.Tem,Standard.Value)) + geom_point() + geom_smooth(method=stats::lm)
+summary(lm(Standard.Value ~ Avg.Tem,Ams_Wheat))
+summary(lm(Standard.Value ~ Vol.Tem,Ams_Wheat))
+
+
+ggplot(climate_g,aes(dt,LandAverageTemperature)) + geom_line() + geom_smooth(method=stats::lm) + geom_smooth(colour='Red')
+ggplot(climate_g,aes(dt,LandAverageTemperatureUncertainty)) + geom_line() + geom_smooth()
+```
+
+
+```{r}
+Kor_cli <- climate_con %>% filter(Location=='South Korea')
+
+names(Kor_cli) <- c("dt","avg","vol","Location")
+Kor_cli %>% str
+Kor_cli %>% filter(dt<as.Date('2013-01-01')) -> Kor_cli
+Kor_cli$dt <- as.integer(substr(Kor_cli$dt,1,4))
+Kor_cli <- Kor_cli %>% group_by(dt) %>% summarise(Avg.Tem=mean(avg),
+                                                  Vol.Tem=max(avg+vol)-min(avg-vol),
+                                                  Max.Tem=max(avg+vol),
+                                                  Min.Tem=min(avg-vol))
+Kor_cli<-as.data.frame(Kor_cli)
+Kor_cli %>% str
+
+ggplot(Kor_cli,aes(dt,Avg.Tem)) + geom_line() + geom_smooth()
+ggplot(Kor_cli,aes(dt,Vol.Tem)) + geom_line() + geom_smooth()
+ggplot(Kor_cli,aes(Avg.Tem,Vol.Tem)) + geom_point() + geom_smooth(method=stats::lm)
+cor(Kor_cli[1:2])
+summary(lm(Vol.Tem ~ Avg.Tem,Kor_cli))
+```
